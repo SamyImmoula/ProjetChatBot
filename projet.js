@@ -1,6 +1,7 @@
 require('dotenv').config();//inclure dotenv
 var builder = require('botbuilder');//inclure botbuilder
 var restify = require('restify');//inclure restify
+var dateFormat = require('dateformat');
 
 const SpaceXAPI = require('SpaceX-API-Wrapper');
 
@@ -65,34 +66,34 @@ bot.dialog('menu', [
    session.beginDialog(menuItems[choice].item);// ouvre un nouveau dialogue
    }
 ]);
-/*
-bot.dialog('option1', [//dialogue de retour pour option1
-    function (session) {
-        //session.send('We are in the option 3 dialog !')//Message envoyé
-        session.sendTyping();
-        SpaceX.getLatestLaunch(function(err, launches){
-            session.send(JSON.stringify(launches)) ;
-        });
-    }
-]);*/
-bot.dialog('option1', [//dialogue de retour pour option3
+
+function sleep(seconds){
+    var waitUntil = new Date().getTime() + seconds*1000;
+    while(new Date().getTime() < waitUntil) true;
+}
+
+bot.dialog('option1', [
     function (session) {
         session.sendTyping();
         SpaceX.getLatestLaunch(function (err, launch) {
-            var adaptiveCardMessage = buildLatestLaunchAdaptiveCard(launch, session);
-            // session.send(JSON.stringify(launch));
+            var adaptiveCardMessage = new builder.Message(session)
+                .addAttachment({
+                    contentType: "application/vnd.microsoft.card.adaptive",
+                    content: {
+                        type: "AdaptiveCard",
+                        body: buildLatestLaunchBody(launch), 
+                        actions: buildLatestLaunchActions(launch)
+                    }
+                });
             session.send(adaptiveCardMessage);
+            sleep(process.env.TIMEOUT);
+            session.beginDialog('menu', session.userData.profile);
         });
     },
  ]);
 
- function buildLatestLaunchAdaptiveCard(launch, session) {
-    var adaptiveCardMessage = new builder.Message(session)
-        .addAttachment({
-            contentType: "application/vnd.microsoft.card.adaptive",
-            content: {
-                type: "AdaptiveCard",
-                body: [
+function buildLatestLaunchBody(launch) {
+    var adaptiveCardMessage = [
                     {
                         "type": "Container",
                         "items": [
@@ -147,7 +148,7 @@ bot.dialog('option1', [//dialogue de retour pour option3
                                         "facts": [
                                             {
                                                 "title": "Date:",
-                                                "value": launch.launch_date_utc
+                                                "value": dateFormat(launch.launch_date_utc,"d/m/yyyy, H:MM:ss")
                                             },
                                             {
                                                 "title": "Site:",
@@ -163,7 +164,7 @@ bot.dialog('option1', [//dialogue de retour pour option3
                                 "items": [
                                     {
                                         "type": "TextBlock",
-                                        "text": launch.details,
+                                        "text": launch.details == null ? "": launch.details,
                                         "wrap": true
                                     },
                                 ]
@@ -171,89 +172,69 @@ bot.dialog('option1', [//dialogue de retour pour option3
                             
                         ]
                     }
-                        
-                    
-                
-                    
-                ], 
-                "actions": [
-                    {
-                                    "type": "Action.OpenUrl",
-                                    "title": "Wiki",
-                                    "url": launch.links.wikipedia
-                    },
-                    {
-                                "type": "Action.OpenUrl",
-                                "title": "Youtube",
-                                "url": launch.links.video_link
-                    }
-                ]
-            }
-        });
+                ];
         return adaptiveCardMessage;
 }
-/*
-bot.dialog('option2', [//dialogue de retour pour option2
-    function (session) {
-        //session.send('We are in the option 3 dialog !')//Message envoyé
-        session.sendTyping();
-        SpaceX.getAllLaunches("",function(err, launches){
-            session.send(JSON.stringify(launches)) ;
-        });
+
+function buildLatestLaunchActions(launch){
+    var actions = [];
+    if (launch.links.wikipedia != null) {
+        var wiki = {
+            "type": "Action.OpenUrl",
+            "title": "Wiki",
+            "url": launch.links.wikipedia
+        };
+        actions.push(wiki);
+    }   
+    if (launch.links.video_link != null) {
+        var yt = {
+            "type": "Action.OpenUrl",
+            "title": "Youtube",
+            "url": launch.links.video_link
+        };
+        actions.push(yt);
     }
-]);*/
-bot.dialog('option2', [//dialogue de retour pour option3
+    return actions;
+}
+
+bot.dialog('option2', [
     function (session) {
         //session.send('We are in the option 3 dialog !')//Message envoyé
         session.sendTyping();
         var vehicules;
-        SpaceX.getAllLaunches({launch_success: true,        },function(err, info){
-            
-         //   var msg=JSON.stringify(info)
+        SpaceX.getAllLaunches({launch_success: true,},function(err, info){
             info.forEach(function(element) {
-                    [     {
-                                        "type": "Action.OpenUrl",
-                                        "title": "Wiki",
-                                        "url": element.links.wikipedia
-                        },
-                        {
-                                    "type": "Action.OpenUrl",
-                                    "title": "Youtube",
-                                    "url": element.links.video_link
-                        }
-                    ]
-                    
-                
                 var msg = new builder.Message(session)
-                .addAttachment({
+                    .addAttachment({
                     contentType: "application/vnd.microsoft.card.adaptive",
                     content: {
                         type: "AdaptiveCard",
                         speak: "",
                         body: allLaunchesAttachments(element),
-                        "actions":
-                        [     {
-                            "type": "Action.OpenUrl",
-                            "title": "Wiki",
-                            "url": element.links.wikipedia
-            },
-            {
-                        "type": "Action.OpenUrl",
-                        "title": "Youtube",
-                        "url": element.links.video_link
-            }
-        ]
-                        
+                        actions:
+                        [
+                            {
+                                "type": "Action.OpenUrl",
+                                "title": "Wiki",
+                                "url": element.links.wikipedia
+                            },
+                            {
+                                "type": "Action.OpenUrl",
+                                "title": "Youtube",
+                                "url": element.links.video_link
+                            }
+                        ]
                     }
                 });
                 session.send(msg);
-            });  
+            });
+            sleep(process.env.TIMEOUT);
+            session.beginDialog('menu', session.userData.profile);
         });
     }
  ]);
 
- function allLaunchesAttachments(element){
-     
+ function allLaunchesAttachments(element){ 
     var body = [
             {
                 "type": "Container",
@@ -262,11 +243,10 @@ bot.dialog('option2', [//dialogue de retour pour option3
                         "type": "ColumnSet",
                         "columns": [
                             {
-                              
-                                    "type": "Column",
-                                    "width": "auto",
-                                    "items": [
-                                        {
+                                "type": "Column",
+                                "width": "auto",
+                                "items": [
+                                    {
                                         "type": "Image",
                                         "url": element.links.mission_patch_small,
                                         "size": "small",
@@ -275,14 +255,14 @@ bot.dialog('option2', [//dialogue de retour pour option3
                                 ]
                             },
                             {
-                                    "type": "Column",
-                                    "width": "stretch",
-                                    "items": [
+                                "type": "Column",
+                                "width": "stretch",
+                                "items": [
                                     {
-                                            "type": "TextBlock",
-                                            "text": element.flight_number,
-                                            "weight": "bolder",
-                                            "wrap": true
+                                        "type": "TextBlock",
+                                        "text": element.flight_number,
+                                        "weight": "bolder",
+                                        "wrap": true
                                     },
                                     {
                                         "type": "TextBlock",
@@ -293,7 +273,6 @@ bot.dialog('option2', [//dialogue de retour pour option3
                                 ]
                             }   
                         ]
-
                     },
                     {
                         "type": "Container",
@@ -318,55 +297,39 @@ bot.dialog('option2', [//dialogue de retour pour option3
                                     {
                                         "title": "Site:",
                                         "value": element.launch_site.site_name_long 
-                                    },
-                                   
+                                    }, 
                                 ],
-                                
                             }
                         ],
                     },
-                    
                 ],
-               
             }
-            
-   
-]; 
-
-         
+        ];    
     return body;
 }
-/*
-bot.dialog('option3', [//dialogue de retour pour option3
-   function (session) {
-       //session.send('We are in the option 3 dialog !')//Message envoyé
-       session.sendTyping();
-       SpaceX.getCompanyInfo(function(err, info){
-        session.send(JSON.stringify(info)) ;
-   });
-   }
-]);
-*/
 
 bot.dialog('option3', [
     //dialogue de retour pour option3
     function (session) {
-                    session.sendTyping();
-                SpaceX.getCompanyInfo(function (err, launch) {
-                    var InfoadaptiveCardMessage = buildInfoAdaptiveCard(launch, session);
-                    // session.send(JSON.stringify(launch));
-                    session.send(InfoadaptiveCardMessage);
-                });
-            },
+        session.sendTyping();
+        SpaceX.getCompanyInfo(function (err, launch) {
+            var InfoadaptiveCardMessage = new builder.Message(session)
+            .addAttachment({
+                contentType: "application/vnd.microsoft.card.adaptive",
+                content: {
+                    type: "AdaptiveCard",
+                    body: buildInfoAdaptiveCard(launch)
+                }
+            });
+            session.send(InfoadaptiveCardMessage);
+            sleep(process.env.TIMEOUT);
+            session.beginDialog('menu', session.userData.profile);
+        });
+    },
 ]);
 
- function buildInfoAdaptiveCard(launch, session){
-    var InfoadaptiveCardMessage = new builder.Message(session)
-    .addAttachment({
-        contentType: "application/vnd.microsoft.card.adaptive",
-        content: {
-            type: "AdaptiveCard",
-            body:  [
+ function buildInfoAdaptiveCard(launch){
+    var InfoadaptiveCardMessage = [
                 {
                     "type": "Container",
                     "items": [
@@ -437,18 +400,7 @@ bot.dialog('option3', [
                         }
                     ]
                 }
-                    
-                
-            
-                
-            ]
-            
-            
-            
-
-    }
-    });
-
+            ];
     return InfoadaptiveCardMessage;
 }
 
@@ -472,6 +424,8 @@ bot.dialog('option3', [
                 });
                 session.send(msg);
             });  
+            sleep(process.env.TIMEOUT);
+            session.beginDialog('menu', session.userData.profile);
         });
     }
  ]);
@@ -540,8 +494,7 @@ bot.dialog('option3', [
                 }
             ]
         }
-         
-];
+    ];
     return body;
 }
 
@@ -552,7 +505,6 @@ bot.dialog('option3', [
         session.sendTyping();
         var vehicules;
         SpaceX.getAllLaunchPads(function(err, info){
-         //   var msg=JSON.stringify(info)
             info.forEach(function(element) {
                 var msg = new builder.Message(session)
                 .addAttachment({
@@ -565,7 +517,9 @@ bot.dialog('option3', [
                     }
                 });
                 session.send(msg);
-            });  
+            });
+            sleep(process.env.TIMEOUT);
+            session.beginDialog('menu', session.userData.profile);  
         });
     }
  ]);
@@ -634,36 +588,7 @@ bot.dialog('option3', [
                     ]
                 }
             ]
-        }
-         
-];
-
-/*---------------------------------
-    var body = [
-        {
-            "type": "TextBlock",
-            "text": element.full_name,
-            "size": "large",
-            "weight": "bolder"
-        },
-        {
-            "type": "TextBlock",
-            "text": element.id
-        },
-        {
-            "type": "TextBlock",
-            "text": element.location.name
-        }
-    ]; 
-
-
-    for (var i = 0; i < element.vehicles_launched.length; i++){
-       var v = {
-            "type": "TextBlock",
-            "text": element.vehicles_launched[i]
-        };
-        body.push(v);
-    }
-*/
+        }     
+    ];
     return body;
 }
